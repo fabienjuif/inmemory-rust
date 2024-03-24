@@ -7,7 +7,7 @@
 mod cache;
 mod sieve;
 use bytes::Bytes;
-use std::{net::SocketAddr, sync::RwLock, time::Duration};
+use std::net::SocketAddr;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
@@ -27,7 +27,7 @@ async fn service(mut socket: TcpStream, addr: SocketAddr) {
             // TODO: actual impl here
             let n = match socket.read(&mut buf).await {
                 // socket closed
-                Ok(n) if n == 0 => return,
+                Ok(0) => return,
                 Ok(n) => n,
                 Err(e) => {
                     eprintln!("failed to read from socket; err = {:?}", e);
@@ -87,7 +87,7 @@ async fn main() -> io::Result<()> {
     loop {
         let listen = async {
             let (socket, addr) = listener.accept().await.unwrap();
-            tasks.push(tokio::spawn(async move { service(socket, addr) }));
+            tasks.push(tokio::spawn(async move { service(socket, addr).await }));
         };
 
         select! {
@@ -100,7 +100,7 @@ async fn main() -> io::Result<()> {
 
     println!("closing server...");
     for t in tasks {
-        t.await?.await;
+        t.await?;
     }
 
     Ok(())

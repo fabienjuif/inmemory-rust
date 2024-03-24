@@ -8,9 +8,6 @@ use std::{
     sync::{Mutex, RwLock},
 };
 
-// For now I only need bytes but TODO: make it generic
-use bytes::Bytes;
-
 struct SieveNode {
     key: &'static str, // TODO: in this impl we could remove it
     visited: bool,
