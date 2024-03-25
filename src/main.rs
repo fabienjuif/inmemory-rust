@@ -7,7 +7,8 @@
 mod cache;
 mod sieve;
 use bytes::Bytes;
-use std::net::SocketAddr;
+use cache::CacheWithTTLEntry;
+use std::{cell::RefCell, net::SocketAddr, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
@@ -18,7 +19,9 @@ use std::io;
 
 use crate::{cache::CacheWithTTL, sieve::ESieve};
 
-async fn service(mut socket: TcpStream, addr: SocketAddr) {
+type SharedCache = Arc<RefCell<CacheWithTTL<Bytes, ESieve<CacheWithTTLEntry<Bytes>>>>>;
+
+async fn service(mut socket: TcpStream, addr: SocketAddr, cache: SharedCache) {
     println!("new client: {}", addr);
     let mut buf = [0; 1024];
 
@@ -36,9 +39,19 @@ async fn service(mut socket: TcpStream, addr: SocketAddr) {
             };
 
             // Write the data back
-            if let Err(e) = socket.write_all(&buf[0..n]).await {
-                eprintln!("failed to write to socket; err = {:?}", e);
-                return;
+            // FIXME: this is not cancel safe, should move the select! on the reading part only
+            eprintln!(
+                "Receieved this buffer from {} => {:?} - but returning a value from cache",
+                addr,
+                &buf[0..n]
+            );
+            if let Some(bytes) = cache.borrow_mut().get("user-id-1") {
+                if let Err(e) = socket.write_all(&bytes).await {
+                    eprintln!("failed to write to socket; err = {:?}", e);
+                    return;
+                }
+            } else {
+                eprintln!("no cache value found!")
             }
         };
 
@@ -60,6 +73,7 @@ async fn main() -> io::Result<()> {
     // TODO: 1 shared cache, should be multiple
     // TODO: capacity should be total_capacity / cache_count
     let mut cache = CacheWithTTL::<Bytes, ESieve<_>>::new(1000);
+    let cache = Arc::new(RefCell::new(cache));
     // cache.set(
     //     "key-1",
     //     Bytes::from_static(b"value-1"),
@@ -87,7 +101,9 @@ async fn main() -> io::Result<()> {
     loop {
         let listen = async {
             let (socket, addr) = listener.accept().await.unwrap();
-            tasks.push(tokio::spawn(async move { service(socket, addr).await }));
+            tasks.push(tokio::spawn(async move {
+                service(socket, addr, cache.clone()).await
+            }));
         };
 
         select! {

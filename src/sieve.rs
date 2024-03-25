@@ -4,8 +4,7 @@ use crate::cache::Cache;
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
-    rc::Rc,
-    sync::{Mutex, RwLock},
+    sync::{Arc, Mutex, RwLock},
 };
 
 struct SieveNode {
@@ -15,8 +14,8 @@ struct SieveNode {
 
 struct Sieve {
     capacity: usize,
-    cache: HashMap<&'static str, Rc<RefCell<SieveNode>>>,
-    log: VecDeque<Rc<RefCell<SieveNode>>>,
+    cache: HashMap<&'static str, Arc<RefCell<SieveNode>>>,
+    log: VecDeque<Arc<RefCell<SieveNode>>>,
     hand: Option<usize>,
 }
 
@@ -30,7 +29,7 @@ impl Sieve {
         }
     }
 
-    fn get_mut_node(&mut self, key: &'static str) -> Option<Rc<RefCell<SieveNode>>> {
+    fn get_mut_node(&mut self, key: &'static str) -> Option<Arc<RefCell<SieveNode>>> {
         self.cache.get_mut(key).cloned()
     }
 
@@ -74,7 +73,7 @@ impl Sieve {
 
         // if we do not hit full capacity we have this shortcut
         if self.log.len() < self.capacity {
-            let node = Rc::new(RefCell::new(node));
+            let node = Arc::new(RefCell::new(node));
             self.log.push_front(node.clone());
             self.cache.insert(key, node);
             return;
@@ -82,7 +81,7 @@ impl Sieve {
 
         // otherwise, we use sieve algorithm and then push
         self.evict();
-        let node = Rc::new(RefCell::new(node));
+        let node = Arc::new(RefCell::new(node));
         self.log.push_front(node.clone());
         self.cache.insert(key, node);
     }
@@ -130,7 +129,10 @@ pub struct ESieve<T: Clone> {
     sieve: Mutex<Sieve>,
 }
 
-// TODO: miss ttl support, maybe have a wrapper to handle that since it'll be the same impl for every cache
+// FIXME: do we need this?
+// unsafe impl<T: Clone> Send for ESieve<T> {}
+// unsafe impl<T: Clone> Sync for ESieve<T> {}
+
 impl<T: Clone> Cache<T> for ESieve<T> {
     fn new(capacity: usize) -> Self {
         Self {
